@@ -397,9 +397,6 @@ class StableDiffusionControlNetAITPipeline(StableDiffusionControlNetPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-            print(text_embeddings)
-            input('text_embeddings')
-
 
         # 4. Prepare image
         cond_image = self.prepare_image(
@@ -542,7 +539,7 @@ class StableDiffusionControlNetAITPipeline(StableDiffusionControlNetPipeline):
                 self.numpy_to_pil(image), return_tensors="pt"
             ).to(self.device)
             image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values
+                images=image, clip_input=safety_checker_input.pixel_values.to(torch.float16)
             )
         else:
             has_nsfw_concept = None

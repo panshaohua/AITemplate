@@ -15,6 +15,7 @@ import os
 import torch
 import numpy as np
 import cv2
+import argparse
 from datetime import datetime
 from PIL import Image
 from collections import OrderedDict
@@ -191,23 +192,25 @@ def map_controlnet_params(pt_mod, dim):
     return params_ait
 
 
-def run(pretrained_model_path, prompt, num_inference_steps, out_image_numbers, ait_compiled_lib_path, output):
+def main(args):
 
     controlnet = ControlNetModel.from_pretrained(
-        "/mnt/users/shaohua/AIGC/A10/diffusers-pipeline/model_card/sd-controlnet-canny", 
+        args.controlnet_canny_model_path, 
         revision="fp16",
         torch_dtype=torch.float16
     ).to("cuda")
 
     pipe = StableDiffusionControlNetAITPipeline.from_pretrained(
-        pretrained_model_path,
+        args.base_model_path,
         controlnet=controlnet,
         revision="fp16",
-        workdir=ait_compiled_lib_path,
+        workdir=args.compiled_ait_lib_path,
         torch_dtype=torch.float16
     ).to("cuda")
 
     # ###########################################################
+    # setup parameter
+
     # # clip_ait
     # mask_seq = 0
     # causal = True
@@ -309,11 +312,11 @@ def run(pretrained_model_path, prompt, num_inference_steps, out_image_numbers, a
     #     pipe.clip_ait_exe.set_constant_with_tensor(k, v)
     # ###########################################################
 
-    save_path = os.path.join(output_path, str(datetime.now()).split(' ')[0])
+    save_path = os.path.join(args.output_path, str(datetime.now()).split(' ')[0])
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    image = load_image('data/000006.jpg')
+    image = load_image(args.controlnet_cond_img_path)
     image = np.array(image)
 
     # get canny image
@@ -323,53 +326,111 @@ def run(pretrained_model_path, prompt, num_inference_steps, out_image_numbers, a
     canny_image = Image.fromarray(image)
 
     generator = torch.Generator(device='cuda')
-    seed = 875884196
+    seed = args.seed
     generator.manual_seed(seed)
-    latents = torch.randn((1, 4, 64, 64), generator=generator, device='cuda')
-    num_inference_steps=20
+    latents = torch.randn((1, 4, 64, 64), generator=generator, device='cuda').to(torch.float16)
 
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
 
     ############################################################################
-    with torch.autocast("cuda"):
-        for i in range(out_image_numbers):
+    for i in range(3):
 
-            start_event.record()
+        start_event.record()
 
-            image = pipe(
-                prompt, 
-                canny_image,
-                512, 512, 
-                latents=latents,
-                num_inference_steps=num_inference_steps,
-                negative_prompt='nsfw',
-                controlnet_conditioning_scale=0.7,
-                ).images[0]
+        image = pipe(
+            args.prompt, 
+            canny_image,
+            512, 512, 
+            latents=latents,
+            num_inference_steps=args.num_inference_steps,
+            negative_prompt=args.negative_prompt,
+            controlnet_conditioning_scale=args.controlnet_conditioning_scale,
+            ).images[0]
 
-            end_event.record()
-            torch.cuda.synchronize()
-            print(start_event.elapsed_time(end_event))
+        end_event.record()
+        torch.cuda.synchronize()
+        print(start_event.elapsed_time(end_event))
 
-            image.save("{}/example_ait_controlnet_{}_{}.png".format(save_path, seed, i))
-        
+        image.save("{}/example_ait_controlnet_{}_{}.png".format(save_path, seed, i))
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Simple example of a inference script.")
+    parser.add_argument(
+        "--base_model_path",
+        type=str,
+        default='runwayml/stable-diffusion-v1-5',
+        # required=True,
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--controlnet_canny_model_path",
+        type=str,
+        default='lllyasviel/sd-controlnet-canny',
+        # required=True,
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default='a photo of woman wearing a suit, detailed face, detaile eyes, best quality, realistic',
+        # required=True,
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=512
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=512
+    )
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=20
+    )
+    parser.add_argument(
+        "--negative_prompt",
+        type=str,
+        default='NSFW',
+        # required=True,
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default='outputs/txt2img-images',
+        # required=True,
+    )
+    parser.add_argument(
+        "--xformers", action="store_true", help="Whether or not to use xformers."
+    )
+    parser.add_argument(
+        "--compiled_ait_lib_path", 
+        type=str,
+        default="controlnet_compile_lib"
+    )
+    parser.add_argument(
+        "--controlnet_conditioning_scale",
+        type=float,
+        default=1.0
+    )
+    parser.add_argument(
+        "--controlnet_cond_img_path", 
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=875884196
+    )
+    args = parser.parse_args()
+    return args
 
 if __name__ == '__main__':
-    pretrained_model_path = 'runwayml/stable-diffusion-v1-5'
-    prompt = 'a photo of woman, beauty'
-    num_inference_steps = 20
-    output_path = 'outputs/txt2img-images'
-    out_image_numbers = 5
-    
-    ait_compiled_lib_path = 'controlnet_compile_lib'
 
-    torch.cuda.synchronize()
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-
-    for i in range(1):
-        # start_event.record()
-        run(pretrained_model_path, prompt, num_inference_steps, out_image_numbers, ait_compiled_lib_path, output_path)
-        # end_event.record()
-        # torch.cuda.synchronize()
-        # print(start_event.elapsed_time(end_event))
+    args = parse_args()
+    main(args)
