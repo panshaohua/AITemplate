@@ -31,8 +31,13 @@ from src.compile_lib.compile_controlnet import compile_controlnet
 
 @click.command()
 @click.option(
-    "--local-dir",
+    "--base_model_path",
     default="runwayml/stable-diffusion-v1-5",
+    help="the local diffusers pipeline directory",
+)
+@click.option(
+    "--controlnet_model_path",
+    default="lllyasviel/sd-controlnet-canny",
     help="the local diffusers pipeline directory",
 )
 @click.option("--width", default=512, help="Width of generated image")
@@ -42,7 +47,8 @@ from src.compile_lib.compile_controlnet import compile_controlnet
 @click.option("--convert-conv-to-gemm", default=True, help="convert 1x1 conv to gemm")
 @click.option("--compiled_out_path", default='controlnet_compile_lib')
 def compile_diffusers(
-    local_dir, width, height, batch_size, use_fp16_acc=True, convert_conv_to_gemm=True,
+    base_model_path, controlnet_model_path, 
+    width, height, batch_size, use_fp16_acc=True, convert_conv_to_gemm=True,
     compiled_out_path='controlnet_compile_lib'
 ):
     logging.getLogger().setLevel(logging.INFO)
@@ -52,12 +58,12 @@ def compile_diffusers(
         convert_conv_to_gemm = False
         
     controlnet = ControlNetModel.from_pretrained(
-        "/mnt/users/shaohua/AIGC/A10/diffusers-pipeline/model_card/sd-controlnet-canny", 
+        controlnet_model_path,
         torch_dtype=torch.float16,
     ).to("cuda")
 
     pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        local_dir,
+        base_model_path,
         controlnet=controlnet,
         revision="fp16",
         torch_dtype=torch.float16,
