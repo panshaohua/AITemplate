@@ -144,3 +144,7 @@ tags
 
 # vim temp files
 *.swp
+
+controlnet_compile_lib/
+data/
+outputs/
