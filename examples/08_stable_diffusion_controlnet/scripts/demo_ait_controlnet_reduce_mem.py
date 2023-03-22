@@ -785,7 +785,7 @@ def main(args):
     end_event = torch.cuda.Event(enable_timing=True)
 
     ############################################################################
-    for i in range(3):
+    for i in range(5):
 
         start_event.record()
 
@@ -803,7 +803,7 @@ def main(args):
         torch.cuda.synchronize()
         print(start_event.elapsed_time(end_event))
 
-        image.save("{}/example_ait_controlnet_{}_{}.png".format(save_path, seed, i))
+    image.save("{}/example_ait_controlnet_{}.png".format(save_path, seed))
 
 
 def parse_args():

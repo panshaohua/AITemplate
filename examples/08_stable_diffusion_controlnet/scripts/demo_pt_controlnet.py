@@ -131,7 +131,7 @@ def main(args):
     end_event = torch.cuda.Event(enable_timing=True)
 
     with torch.autocast("cuda"):
-        for i in range(3):
+        for i in range(5):
             
             start_event.record()
             
@@ -150,7 +150,7 @@ def main(args):
             torch.cuda.synchronize()
             print(start_event.elapsed_time(end_event))
 
-            image.save("{}/example_pt_controlnet_seed_{}_{}.png".format(save_path, seed, i))
+        image.save("{}/example_pt_controlnet_seed_{}.png".format(save_path, seed))
 
 
 if __name__ == "__main__":
