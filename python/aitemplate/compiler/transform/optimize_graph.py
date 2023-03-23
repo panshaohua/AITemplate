@@ -19,6 +19,7 @@ from typing import List
 
 from aitemplate.compiler.base import Tensor
 from aitemplate.compiler.transform.apply_padding import apply_padding
+from aitemplate.compiler.transform.fuse_bmm_permute import fuse_bmm_permute
 from aitemplate.compiler.transform.fuse_conv_elementwise import fuse_conv_elementwise
 from aitemplate.compiler.transform.fuse_group_ops import fuse_group_ops
 from aitemplate.compiler.transform.fuse_mm_elementwise import fuse_mm_elementwise
@@ -34,6 +35,7 @@ from aitemplate.compiler.transform.fuse_parallel_gemms import fuse_parallel_gemm
 from aitemplate.compiler.transform.fuse_permute_bmm_and_gemm import (
     fuse_permute_bmm_and_gemm,
 )
+from aitemplate.compiler.transform.move_view_ops import move_view_op_before_concat
 from aitemplate.compiler.transform.split_large_concat_ops import split_large_concat_ops
 from aitemplate.compiler.transform.split_large_slice_scatter_ops import (
     split_large_slice_scatter_ops,
@@ -67,6 +69,7 @@ def optimize_graph(
     - fuse group ops
     - transform special ops
     - transform strided ops
+    - fuse bmm and permute
     - transform memory ops
     - apply padding
 
@@ -85,10 +88,13 @@ def optimize_graph(
 
     funcs = [
         fuse_permute_bmm_and_gemm,
+        fuse_bmm_permute,
         transform_odd_alignment,
         fuse_conv_elementwise,
         fuse_mm_elementwise,
         fuse_mm_reshape_permute,
+        # make sure we run move_view_op_before_concat before transform_memory_ops
+        move_view_op_before_concat,
         transform_memory_ops,
         fuse_ops,
         fuse_elementwise,

@@ -22,10 +22,12 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import reduce
 from pprint import pformat
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Union
 
 import numpy as np
+import sympy
 
+from aitemplate.compiler import symbolic
 from aitemplate.compiler.dtype import get_dtype_size, normalize_dtype
 from aitemplate.compiler.op_registry import OP_REGISTRY
 
@@ -88,12 +90,13 @@ class IntVar(Node):
         self,
         values: List[int],
         name: str = None,
+        symbolic_value: Optional[sympy.Basic] = None,
     ) -> None:
         """Initializes an IntVar.
 
         Parameters
         ----------
-        values : list[int]
+        values : List[int]
             A list of possible values of this dynamic dimension.
             len(values) must be >= 2.
 
@@ -108,6 +111,9 @@ class IntVar(Node):
         name : str, optional
             Name of this dimension, by default None.
             This field must be set for dims which are used by input tensors.
+
+        symbolic_value: sympy.Basic, optional
+            The symbolic value for this IntVar. If None is provided, we will generate a symbol for this IntVar.
         """
         super().__init__()
         self._attrs["name"] = name
@@ -124,7 +130,13 @@ class IntVar(Node):
             )
         self._attrs["values"] = sorted(set(values))
         if len(self._attrs["values"]) == 1:
+            self._attrs["symbolic_value"] = self._attrs["values"][0]
             self._attrs["values"] = self._attrs["values"] * 2
+        else:
+            if symbolic_value is None:
+                symbolic_value = symbolic.create_new_symbol(name, values)
+                symbolic.store_intvar(symbolic_value.name, self)
+            self._attrs["symbolic_value"] = symbolic_value
 
     def __str__(self) -> str:
         return pformat(self._attrs, indent=2)
@@ -132,8 +144,7 @@ class IntVar(Node):
     def __eq__(self, another: Any) -> bool:
         return (
             isinstance(another, IntVar)
-            and self._attrs["values"] == another._attrs["values"]
-            and self._attrs["name"] == another._attrs["name"]
+            and self._attrs["symbolic_value"] == another._attrs["symbolic_value"]
         )
 
     def __hash__(self) -> int:
@@ -146,6 +157,10 @@ class IntVar(Node):
     def upper_bound(self) -> int:
         """Returns upper bound of this dynamic dim."""
         return self._attrs["values"][-1]
+
+    def symbolic_value(self):
+        """Returns the symbolic value of this dynamic dim."""
+        return self._attrs["symbolic_value"]
 
     def pseudo_code(self, with_shape=False) -> str:
         return (
@@ -188,6 +203,7 @@ class IntImm(IntVar):
         Node.__init__(self)  # pylint: disable=W0233
         self._attrs["name"] = name
         self._attrs["values"] = [value]
+        self._attrs["symbolic_value"] = value
 
     def __eq__(self, another: Union[int, IntVar]) -> bool:
         if isinstance(another, int):
@@ -574,8 +590,8 @@ class Tensor(Node):
         self,
         shape: List[IntVar],
         name: str = None,
-        src_ops: StableSet[Node] = None,
-        dst_ops: StableSet[Node] = None,
+        src_ops: Sequence[Node] = None,
+        dst_ops: Sequence[Node] = None,
         dtype: str = "float16",
         is_input: bool = False,
         is_output: bool = False,
@@ -622,12 +638,8 @@ class Tensor(Node):
         super().__init__()
         self._attrs["shape"] = self._convert_shape(shape)
         self._attrs["name"] = name
-        self._attrs["src_ops"] = (
-            StableSet(src_ops) if src_ops is not None else StableSet()
-        )
-        self._attrs["dst_ops"] = (
-            StableSet(dst_ops) if dst_ops is not None else StableSet()
-        )
+        self._attrs["src_ops"] = StableSet(src_ops)
+        self._attrs["dst_ops"] = StableSet(dst_ops)
         self._attrs["dtype"] = dtype
         self._attrs["is_output"] = is_output
         self._attrs["is_input"] = is_input
@@ -733,7 +745,7 @@ class Tensor(Node):
         )
 
     def size_bytes(self, alignment: int = 1) -> int:
-        """Returns acutal size (in bytes) of this Tensor."""
+        """Returns actual size (in bytes) of this Tensor."""
         return get_aligned_size(self._attrs["shape"], self.dtype(), alignment)
 
     def pseudo_code(self, with_shape=True) -> str:
@@ -868,6 +880,7 @@ class IntVarTensor(Tensor):
             is_output=is_output,
         )
         self._attrs["int_var"] = int_var
+        self._attrs["symbolic_value"] = int_var._attrs["symbolic_value"]
 
     def pseudo_code(self, with_shape=True) -> str:
         return f"IntVarTensor({self._attrs['int_var'].pseudo_code()})"
@@ -1051,10 +1064,6 @@ class Operator(Node):
         example, the FuncEnum for a elementwise op.
 
         This is used when we need to copy the op with identical behaviour.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------

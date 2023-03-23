@@ -457,14 +457,14 @@ SELECT name FROM sqlite_master WHERE type='table';
 )
 
 
-__AIT_CACHE_VERSION__ = 2
+__AIT_CACHE_VERSION__ = 3
 
 
 def ait_cache_version() -> int:
     return __AIT_CACHE_VERSION__
 
 
-class ProfileCacheDB(object):
+class ProfileCacheDB:
     r"""Local SQLite profile cache database."""
 
     def __init__(
