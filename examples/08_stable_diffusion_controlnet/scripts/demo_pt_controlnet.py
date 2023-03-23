@@ -130,27 +130,26 @@ def main(args):
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
 
-    with torch.autocast("cuda"):
-        for i in range(5):
-            
-            start_event.record()
-            
-            image = pipe(
-                args.prompt,
-                height=args.height,
-                width=args.width,
-                negative_prompt=args.negative_prompt,
-                num_inference_steps=args.num_inference_steps, 
-                latents=latents, 
-                image=canny_image,
-                controlnet_conditioning_scale=args.controlnet_conditioning_scale
-            ).images[0]
+    for i in range(5):
+        
+        start_event.record()
+        
+        image = pipe(
+            args.prompt,
+            height=args.height,
+            width=args.width,
+            negative_prompt=args.negative_prompt,
+            num_inference_steps=args.num_inference_steps, 
+            latents=latents, 
+            image=canny_image,
+            controlnet_conditioning_scale=args.controlnet_conditioning_scale
+        ).images[0]
 
-            end_event.record()
-            torch.cuda.synchronize()
-            print(start_event.elapsed_time(end_event))
+        end_event.record()
+        torch.cuda.synchronize()
+        print(start_event.elapsed_time(end_event))
 
-        image.save("{}/example_pt_controlnet_seed_{}.png".format(save_path, seed))
+    image.save("{}/example_pt_controlnet_seed_{}.png".format(save_path, seed))
 
 
 if __name__ == "__main__":
