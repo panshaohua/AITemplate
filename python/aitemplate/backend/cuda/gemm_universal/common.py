@@ -1093,11 +1093,12 @@ def gen_local_dim_defs(func_attrs, indent="  "):
             # skip dynamic dims
             if isinstance(dim, IntImm):
                 input_shape = func_attrs["inputs"][input_idx]._attrs["shape"]
-                name = input_shape[idx]._attrs["name"]
-                if name in dims:
-                    assert dims[name] == dim.value(), "bmm inputs shape mismatch"
-                else:
-                    dims[name] = dim.value()
+                if idx < len(input_shape):
+                    name = input_shape[idx]._attrs["name"]
+                    if name in dims:
+                        assert dims[name] == dim.value(), "bmm inputs shape mismatch"
+                    else:
+                        dims[name] = dim.value()
     return DIM_DEFS_TEMPLATE.render(dims=dims, indent=indent)
 
 
@@ -1131,7 +1132,7 @@ def gen_function_call(func_attrs, indent="  ", bias_ptr_arg=None):
 
 
 def default_fproc(
-    *, op, a_layout, b_layout, c_layout, dtype, epiligue_name, permute_layout=None
+    *, op, a_layout, b_layout, c_layout, dtype, epilogue_name, permute_layout=None
 ):
     import copy
 
@@ -1183,7 +1184,7 @@ def default_fproc(
         # set output major
         op.C.layout = c_layout
         # set epilogue
-        op.epilogue_functor = cutlass_lib.library.EpilogueFunctorName[epiligue_name]
+        op.epilogue_functor = cutlass_lib.library.EpilogueFunctorName[epilogue_name]
         op.element_epilogue = acc_type
         if permute_layout is not None:
             op.permute_layout = cutlass_lib.library.EpiloguePermuteLayoutName[
@@ -1212,7 +1213,7 @@ def make_fproc(func_attrs, layout):
             b_layout=b_layout,
             c_layout=c_layout,
             dtype=func_attrs["inputs"][0].dtype(),
-            epiligue_name=func_attrs["epilogue"],
+            epilogue_name=func_attrs["epilogue"],
         )
 
     func_attrs["op_instance"] = extract_config(fproc)
