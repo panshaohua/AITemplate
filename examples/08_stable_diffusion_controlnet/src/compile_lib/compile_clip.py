@@ -67,11 +67,11 @@ def map_clip_params(pt_mod, batch_size, seqlen, depth):
             continue
         params_ait[ait_name] = arr
 
-        if detect_target().name() == "cuda":
-            for i in range(depth):
-                prefix = "encoder_layers_%d_self_attn_cu_length" % (i)
-                cu_len = np.cumsum([0] + [seqlen] * batch_size).astype("int32")
-                params_ait[prefix] = torch.from_numpy(cu_len).cuda()
+        # if detect_target().name() == "cuda":
+        #     for i in range(depth):
+        #         prefix = "encoder_layers_%d_self_attn_cu_length" % (i)
+        #         cu_len = np.cumsum([0] + [seqlen] * batch_size).astype("int32")
+        #         params_ait[prefix] = torch.from_numpy(cu_len).cuda()
 
     return params_ait
 
@@ -118,4 +118,4 @@ def compile_clip(
     target = detect_target(
         use_fp16_acc=use_fp16_acc, convert_conv_to_gemm=convert_conv_to_gemm
     )
-    compile_model(Y, target, ait_so_path, "CLIPTextModel", constants=params_ait)
+    compile_model(Y, target, ait_so_path, "CLIPTextModel", constants=None)

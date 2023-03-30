@@ -27,7 +27,7 @@ from .util import mark_output
 
 def map_vae_params(ait_module, pt_module, batch_size, seq_len):
     pt_params = dict(pt_module.named_parameters())
-    mapped_pt_params = OrderedDict()
+    mapped_pt_params = {}
     for name, _ in ait_module.named_parameters():
         ait_name = name.replace(".", "_")
         if name in pt_params:
@@ -65,6 +65,7 @@ def map_vae_params(ait_module, pt_module, batch_size, seq_len):
             pt_name = prefix + "proj_attn.bias"
             mapped_pt_params[ait_name] = pt_params[pt_name]
         elif name.endswith("attention.cu_length"):
+            continue
             cu_len = np.cumsum([0] + [seq_len] * batch_size).astype("int32")
             mapped_pt_params[ait_name] = torch.from_numpy(cu_len).cuda()
         else:
@@ -137,5 +138,5 @@ def compile_vae(
         target,
         ait_so_path,
         "AutoencoderKL",
-        constants=params_ait,
+        constants=None,
     )

@@ -28,10 +28,10 @@ sys.path.append('examples/08_stable_diffusion_controlnet')
 from src.pipeline_stable_diffusion_controlnet_ait import StableDiffusionControlNetAITPipeline
 from diffusers import ControlNetModel
 
-# from src.modeling.clip import CLIPTextTransformer as ait_CLIPTextTransformer
-# from src.modeling.unet_2d_condition_with_controlnet import UNet2DConditionModel as ait_UNet2DConditionModel
-# from src.modeling.vae import AutoencoderKL as ait_AutoencoderKL
-# from src.modeling.controlnet import ControlNetModel as ait_ControlNetModel
+from src.modeling.clip import CLIPTextTransformer as ait_CLIPTextTransformer
+from src.modeling.unet_2d_condition_with_controlnet import UNet2DConditionModel as ait_UNet2DConditionModel
+from src.modeling.vae import AutoencoderKL as ait_AutoencoderKL
+from src.modeling.controlnet import ControlNetModel as ait_ControlNetModel
 
 USE_CUDA = detect_target().name() == "cuda"
 
@@ -107,6 +107,7 @@ def map_vae_params(ait_module, pt_module, batch_size, seq_len):
             pt_name = prefix + "proj_attn.bias"
             mapped_pt_params[ait_name] = pt_params[pt_name]
         elif name.endswith("attention.cu_length"):
+            continue
             cu_len = np.cumsum([0] + [seq_len] * batch_size).astype("int32")
             mapped_pt_params[ait_name] = torch.from_numpy(cu_len).cuda()
         else:
@@ -160,11 +161,11 @@ def map_clip_params(pt_mod, batch_size, seqlen, depth):
             continue
         params_ait[ait_name] = arr
 
-        if USE_CUDA:
-            for i in range(depth):
-                prefix = "encoder_layers_%d_self_attn_cu_length" % (i)
-                cu_len = np.cumsum([0] + [seqlen] * batch_size).astype("int32")
-                params_ait[prefix] = torch.from_numpy(cu_len).cuda()
+        # if USE_CUDA:
+        #     for i in range(depth):
+        #         prefix = "encoder_layers_%d_self_attn_cu_length" % (i)
+        #         cu_len = np.cumsum([0] + [seqlen] * batch_size).astype("int32")
+        #         params_ait[prefix] = torch.from_numpy(cu_len).cuda()
 
     return params_ait
 
@@ -208,109 +209,111 @@ def main(args):
         torch_dtype=torch.float16
     ).to("cuda")
 
-    # ###########################################################
+    ###########################################################
     # setup parameter
 
-    # # clip_ait
-    # mask_seq = 0
-    # causal = True
-    # depth = 12
-    # dim=768
-    # num_heads=12
-    # batch_size=1
-    # seqlen=64
+    # clip_ait
+    mask_seq = 0
+    causal = True
+    depth = 12
+    dim=768
+    num_heads=12
+    batch_size=1
+    seqlen=64
 
-    # ait_mod = ait_CLIPTextTransformer(
-    #     num_hidden_layers=depth,
-    #     hidden_size=dim,
-    #     num_attention_heads=num_heads,
-    #     batch_size=batch_size,
-    #     seq_len=seqlen,
-    #     causal=causal,
-    #     mask_seq=mask_seq,
-    # )
-    # ait_mod.name_parameter_tensor()
+    ait_mod = ait_CLIPTextTransformer(
+        num_hidden_layers=depth,
+        hidden_size=dim,
+        num_attention_heads=num_heads,
+        batch_size=batch_size,
+        seq_len=seqlen,
+        causal=causal,
+        mask_seq=mask_seq,
+    )
+    ait_mod.name_parameter_tensor()
 
-    # pt_mod = pipe.text_encoder
-    # pt_mod = pt_mod.eval()
-    # params_ait = map_clip_params(pt_mod, batch_size, seqlen, depth)
-    # for k, v in params_ait.items():
-    #     pipe.clip_ait_exe.set_constant_with_tensor(k, v)
+    pt_mod = pipe.text_encoder
+    pt_mod = pt_mod.eval()
+    params_ait = map_clip_params(pt_mod, batch_size, seqlen, depth)
+    for k, v in params_ait.items():
+        pipe.clip_ait_exe.set_constant_with_tensor(k, v)
 
-    # ###########################################################
-    # # unet_ait
-    # dim = 320
-    # ait_mod = ait_UNet2DConditionModel(
-    #     sample_size=64,
-    #     cross_attention_dim=768
-    # )
-    # ait_mod.name_parameter_tensor()
+    ###########################################################
+    # unet_ait
+    dim = 320
+    ait_mod = ait_UNet2DConditionModel(
+        sample_size=64,
+        cross_attention_dim=768
+    )
+    ait_mod.name_parameter_tensor()
 
-    # # set AIT parameters
-    # pt_mod = pipe.unet
-    # pt_mod = pt_mod.eval()
-    # params_ait = map_unet_params(pt_mod, dim)
-    # for k, v in params_ait.items():
-    #     pipe.unet_ait_exe.set_constant_with_tensor(k, v)
+    # set AIT parameters
+    pt_mod = pipe.unet
+    pt_mod = pt_mod.eval()
+    params_ait = map_unet_params(pt_mod, dim)
+    for k, v in params_ait.items():
+        pipe.unet_ait_exe.set_constant_with_tensor(k, v)
 
-    # ###########################################################
-    # # vae_ait
-    # in_channels = 3
-    # out_channels = 3
-    # down_block_types = [
-    #     "DownEncoderBlock2D",
-    #     "DownEncoderBlock2D",
-    #     "DownEncoderBlock2D",
-    #     "DownEncoderBlock2D",
-    # ]
-    # up_block_types = [
-    #     "UpDecoderBlock2D",
-    #     "UpDecoderBlock2D",
-    #     "UpDecoderBlock2D",
-    #     "UpDecoderBlock2D",
-    # ]
-    # block_out_channels = [128, 256, 512, 512]
-    # layers_per_block = 2
-    # act_fn = "silu"
-    # latent_channels = 4
-    # sample_size = 512
+    ###########################################################
+    # vae_ait
+    height = 512
+    width = 512
+    in_channels = 3
+    out_channels = 3
+    down_block_types = [
+        "DownEncoderBlock2D",
+        "DownEncoderBlock2D",
+        "DownEncoderBlock2D",
+        "DownEncoderBlock2D",
+    ]
+    up_block_types = [
+        "UpDecoderBlock2D",
+        "UpDecoderBlock2D",
+        "UpDecoderBlock2D",
+        "UpDecoderBlock2D",
+    ]
+    block_out_channels = [128, 256, 512, 512]
+    layers_per_block = 2
+    act_fn = "silu"
+    latent_channels = 4
+    sample_size = 512
 
-    # ait_vae = ait_AutoencoderKL(
-    #     batch_size,
-    #     height,
-    #     width,
-    #     in_channels=in_channels,
-    #     out_channels=out_channels,
-    #     down_block_types=down_block_types,
-    #     up_block_types=up_block_types,
-    #     block_out_channels=block_out_channels,
-    #     layers_per_block=layers_per_block,
-    #     act_fn=act_fn,
-    #     latent_channels=latent_channels,
-    #     sample_size=sample_size,
-    # )
-    # ait_vae.name_parameter_tensor()
-    # # set AIT_VAE parameters
-    # pt_mod = pipe.vae
-    # pt_mod = pt_mod.eval()
-    # params_ait = map_vae_params(pt_mod, dim)
-    # for k, v in params_ait.items():
-    #     pipe.vae_ait_exe.set_constant_with_tensor(k, v)
+    ait_vae = ait_AutoencoderKL(
+        batch_size,
+        height,
+        width,
+        in_channels=in_channels,
+        out_channels=out_channels,
+        down_block_types=down_block_types,
+        up_block_types=up_block_types,
+        block_out_channels=block_out_channels,
+        layers_per_block=layers_per_block,
+        act_fn=act_fn,
+        latent_channels=latent_channels,
+        sample_size=sample_size,
+    )
+    ait_vae.name_parameter_tensor()
+    # set AIT_VAE parameters
+    pt_mod = pipe.vae
+    pt_mod = pt_mod.eval()
+    params_ait = map_vae_params(ait_vae, pt_mod, batch_size, height * width)
+    for k, v in params_ait.items():
+        pipe.vae_ait_exe.set_constant_with_tensor(k, v)
         
-    # ###########################################################
-    # # controlnet ait
-    # ait_mod = ait_ControlNetModel(
-    #     cross_attention_dim=768,
-    # )
-    # ait_mod.name_parameter_tensor()
+    ###########################################################
+    # controlnet ait
+    ait_mod = ait_ControlNetModel(
+        cross_attention_dim=768,
+    )
+    ait_mod.name_parameter_tensor()
 
-    # # set AIT parameters
-    # pt_mod = controlnet
-    # pt_mod = pt_mod.eval()
-    # params_ait = map_controlnet_params(pt_mod, dim)
-    # for k, v in params_ait.items():
-    #     pipe.clip_ait_exe.set_constant_with_tensor(k, v)
-    # ###########################################################
+    # set AIT parameters
+    pt_mod = controlnet
+    pt_mod = pt_mod.eval()
+    params_ait = map_controlnet_params(pt_mod, dim)
+    for k, v in params_ait.items():
+        pipe.controlnet_ait_exe.set_constant_with_tensor(k, v)
+    ###########################################################
 
     save_path = os.path.join(args.output_path, str(datetime.now()).split(' ')[0])
     if not os.path.exists(save_path):
